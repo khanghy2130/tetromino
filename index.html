@@ -1,49 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1"
-    />
-    <title>Zodiac Duality</title>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-      }
-      body {
-        display: flex;
-        overflow: hidden;
-        min-height: 100vh;
-        background: linear-gradient(
-          -71deg,
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1" />
+  <title>Tetromino</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      display: flex;
+      overflow: hidden;
+      min-height: 100vh;
+      background: linear-gradient(-71deg,
           #250b36 25%,
           transparent 26%,
           transparent 74%,
-          #250b36 75%
-        );
-        background-size: 30vw 30vw;
-        background-color: #210930;
-        opacity: 1;
-      }
-      main {
-        width: 100vw;
-        height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-      }
-      canvas {
-        touch-action: pinch-zoom;
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <canvas id="game-canvas"></canvas>
-    </main>
-    <script type="module" src="/src/sketch.ts"></script>
-  </body>
+          #250b36 75%);
+      background-size: 30vw 30vw;
+      background-color: #210930;
+      opacity: 1;
+    }
+
+    main {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    canvas {
+      touch-action: pinch-zoom;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <canvas id="game-canvas"></canvas>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>
