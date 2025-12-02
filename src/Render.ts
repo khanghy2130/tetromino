@@ -25,9 +25,9 @@ export default class Render {
   input: {
     hoveredSquare: SquareID | null
     calculatedSqs: {
-      id: SquareID, isHeavy: boolean,
+      id: SquareID, isGolden: boolean,
       isOutOfBound?: boolean, isOverlapped?: boolean
-      faceChanges: boolean[]
+      stepsHistory: SquareID[]
     }[]
   } = { hoveredSquare: null, calculatedSqs: [] }
 
@@ -189,9 +189,9 @@ export default class Render {
     }
   }
 
-  getSteppedSqID(sd: sqDirs, id: SquareID): { id: SquareID, faceChanges: boolean[] } | null {
+  getSteppedSqID(sd: sqDirs, id: SquareID): { id: SquareID, stepsHistory: SquareID[] } | null {
     id = id.slice() as SquareID
-    const faceChanges: boolean[] = [] // true = next face
+    const stepsHistory: SquareID[] = [] // true = next face
 
     for (let i = 0; i < sd.length; i++) {
       switch (sd[i]) {
@@ -206,7 +206,6 @@ export default class Render {
         case "D":
           // going to next face?
           if (id[1] === 0) {
-            faceChanges.push(true)
             id = [id[0] === 2 ? 0 : id[0] + 1, id[2], 0]
             // apply rotation to sd
             sd = sd.map(d => this.gameplay.getRotatedDir(d, false))
@@ -217,7 +216,6 @@ export default class Render {
         case "L":
           // going to previous face?
           if (id[2] === 0) {
-            faceChanges.push(false)
             id = [id[0] === 0 ? 2 : id[0] - 1, 0, id[1]]
             // apply rotation to sd
             sd = sd.map(d => this.gameplay.getRotatedDir(d, true))
@@ -227,9 +225,10 @@ export default class Render {
           break
 
       }
+      stepsHistory.push(id.slice() as SquareID)
     }
 
-    return { id, faceChanges }
+    return { id, stepsHistory }
   }
 
   renderButtons() {
@@ -287,7 +286,7 @@ export default class Render {
           if (sqData === 1) {
             p5.fill(150)
           } else {
-            p5.fill(237, 252, 66) // heavy
+            p5.fill(237, 252, 66) // golden
           }
 
           p5.beginShape();
@@ -303,9 +302,8 @@ export default class Render {
   }
 
   getPieceImageData(op: OriginalPiece) {
-    const { sqList, heavySqIndex } = op
-    const hIndex: number | null = heavySqIndex === null ? null :
-      (heavySqIndex === "CENTER" ? 0 : heavySqIndex + 1)
+    const { sqList, goldenSqIndex } = op
+    const hIndex: number = goldenSqIndex === "CENTER" ? 0 : goldenSqIndex + 1
     const sqsCoors: PositionType[] = [[0, 0]]
     for (let j = 0; j < sqList.length; j++) {
       const sqdirs = sqList[j]
@@ -384,21 +382,19 @@ export default class Render {
       if (currentPiece.hoveredSq) {
         const calculatedSqs: this["input"]["calculatedSqs"] = [
           // including center square
-          { id: currentPiece.hoveredSq, faceChanges: [], isHeavy: currentPiece.op.heavySqIndex === "CENTER" }
+          { id: currentPiece.hoveredSq, stepsHistory: [], isGolden: currentPiece.op.goldenSqIndex === "CENTER" }
         ]
 
         // all other squares beside center square
         for (let i = 0; i < currentPiece.sqList.length; i++) {
           const item = this.getSteppedSqID(currentPiece.sqList[i], currentPiece.hoveredSq)
           if (item === null) {
-            calculatedSqs.push({ id: currentPiece.hoveredSq, faceChanges: [], isHeavy: false, isOutOfBound: true })
+            calculatedSqs.push({ id: currentPiece.hoveredSq, stepsHistory: [], isGolden: false, isOutOfBound: true })
           }
           else {
-            calculatedSqs.push({ id: item.id, faceChanges: item.faceChanges, isHeavy: currentPiece.op.heavySqIndex === i })
+            calculatedSqs.push({ id: item.id, stepsHistory: item.stepsHistory, isGolden: currentPiece.op.goldenSqIndex === i })
           }
         }
-
-        ////// level 3: also set isHeavy to each non-heavy if next to existing heavy
 
 
         // check if overlapped (also set possible)
@@ -411,12 +407,12 @@ export default class Render {
 
         // rendering
         for (let i = 0; i < calculatedSqs.length; i++) {
-          const { id, isHeavy, isOutOfBound } = calculatedSqs[i]
+          const { id, isGolden, isOutOfBound } = calculatedSqs[i]
           if (isOutOfBound) continue
 
           const sqVerts = this.GRID_VERTICES.faces[id[0]][id[1]][id[2]]
           if (possiblePlacement) {
-            if (isHeavy) {
+            if (isGolden) {
               p5.fill(237, 252, 66, 140)
             } else {
               p5.fill(150, 255, 180, 140)
@@ -442,7 +438,7 @@ export default class Render {
     }
 
 
-    //// render next pieces
+    // render next pieces
     gp.nextPieces
     p5.stroke(0)
     p5.strokeWeight(2)
@@ -457,7 +453,7 @@ export default class Render {
         p5.square(coor[1] * 20 + 230 + i * 100, coor[0] * 20 + 500, 20)
       }
     }
-    //// render current piece
+    // render current piece
     if (currentPiece) {
       const { sqsCoors, hIndex } = this.getPieceImageData(currentPiece.op)
       for (let si = 0; si < sqsCoors.length; si++) {
@@ -470,8 +466,9 @@ export default class Render {
 
     //// test text
     p5.fill(250)
-    p5.text(this.input.hoveredSquare + "", 50, 20)
-
+    p5.textSize(24)
+    // p5.text(this.input.hoveredSquare + "", 50, 20)
+    p5.text(gp.remainingPieces + "\n" + gp.goldPoints, 370, 40)
   }
 
   click() {
@@ -484,10 +481,8 @@ export default class Render {
     }
     // desktop mode
     else {
-      /// place piece if hovering on a square
-      if (this.input.hoveredSquare) {
-        gp.placePiece()
-      }
+      // place piece if hovering on a square
+      if (this.input.hoveredSquare) { gp.placePiece() }
     }
   }
 

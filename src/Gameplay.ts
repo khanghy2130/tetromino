@@ -1,11 +1,11 @@
 import GameClient, { getRandomItem } from "./main"
 import Render, { PositionType, SquareID } from "./Render"
 
-export type SquareData = 0 | 1 | 2 // none | normal | heavy
+export type SquareData = 0 | 1 | 2 // none | normal | golden
 
 export type OriginalPiece = {
   sqList: sqDirs[]
-  heavySqIndex: number | "CENTER" | null // index of square | null is no heavy square
+  goldenSqIndex: number | "CENTER" // index of square
 }
 
 type ClearableSquare = { id: SquareID, prevState: SquareData }
@@ -21,10 +21,6 @@ export type sqDirs = ("U" | "D" | "L" | "R")[] // for one square in a piece
 export default class Gameplay {
   gc: GameClient
   render!: Render
-
-  CONSTS = {
-    TURNS_PER_LEVEL: 10
-  }
 
   RAW_PIECES: sqDirs[][] = [
     // not include center square
@@ -51,7 +47,8 @@ export default class Gameplay {
   currentPiece: CurrentPiece | null = null
   nextPieces: [OriginalPiece | null, OriginalPiece | null] = [null, null]
 
-  currentTurn: number = 1
+  remainingPieces: number = 40
+  goldPoints: number = 0
 
   lastHoveredFaceIndex: 0 | 1 | 2 = 1 // second face is default
 
@@ -64,21 +61,21 @@ export default class Gameplay {
     this.setUpNewGame()
   }
 
-  getNewPiece(hasHeavy: boolean): OriginalPiece {
+  getNewPiece(): OriginalPiece {
     return {
       sqList: getRandomItem(this.RAW_PIECES),
-      // sqList length is always 3
-      heavySqIndex: true ? getRandomItem([0, 1, 2, "CENTER"]) : null
+      goldenSqIndex: getRandomItem([0, 1, 2, "CENTER"])
     }
   }
 
   setUpNewGame() {
     // reset
-    this.currentTurn = 1
+    this.remainingPieces = 30
+    this.goldPoints = 0
     this.currentPiece = null
 
-    // set starting nextPieces (no heavy square)
-    this.nextPieces = [this.getNewPiece(false), this.getNewPiece(false)]
+    // set starting nextPieces
+    this.nextPieces = [this.getNewPiece(), this.getNewPiece()]
     this.shiftPiecesInventory() // set currentPiece
 
     // empty board data
@@ -91,29 +88,26 @@ export default class Gameplay {
   }
 
 
+  // called after modifying remainingPieces
   shiftPiecesInventory() {
+    this.lastHoveredFaceIndex = 1 // reset
+
     // set currentPiece to the next one
     const nextPiece = this.nextPieces[0]
-    if (!nextPiece) return // failsafe for no next piece
-
-    this.currentPiece = {
-      op: nextPiece,
-      sqList: nextPiece.sqList.map(item => item.slice()),
-      hoveredSq: null
+    if (nextPiece === null) {
+      this.currentPiece = null // out of pieces
+    } else {
+      this.currentPiece = {
+        op: nextPiece,
+        sqList: nextPiece.sqList.map(item => item.slice()),
+        hoveredSq: null
+      }
     }
 
-    this.lastHoveredFaceIndex = 1 // reset
-    ///// this.rotatePiece(false) // rotate to fit default face
-
-    // exit if passed certain turn number (no more piece needed)
-    ////
-
     // shift and create new 2nd piece in nextPieces
-    const { nextPieces } = this
+    const { nextPieces, remainingPieces } = this
     nextPieces[0] = nextPieces[1]
-    nextPieces[1] = this.getNewPiece(
-      this.currentTurn >= this.CONSTS.TURNS_PER_LEVEL - 2
-    )
+    nextPieces[1] = remainingPieces > 2 ? this.getNewPiece() : null
   }
 
   getRotatedDir(d: sqDirs[number], clockwise: boolean): sqDirs[number] {
@@ -153,10 +147,9 @@ export default class Gameplay {
     return asids
   }
 
-  // clear and return list of cleared squares, or null
-  clearFilledRows(): ClearableSquare[] | null {
+  // clear and return list of cleared squares, empty array if no clearing
+  clearFilledRows(): ClearableSquare[] {
     const sqs: ClearableSquare[] = []
-    const heavySqs: ClearableSquare[] = []
     const bd = this.boardData
 
     // each face: check horizontal
@@ -182,54 +175,24 @@ export default class Gameplay {
           for (let s = 0; s < sids.length; s++) {
             const sid = sids[s]
             const sqData = bd[sid[0]][sid[1]][sid[2]]
-            if (sqData === 1) { sqs.push({ id: sid, prevState: 1 }) }
-            else { heavySqs.push({ id: sid, prevState: 2 }) }
+            sqs.push({ id: sid, prevState: sqData })
           }
         }
       }
     }
 
-    // no clearing?
-    if (heavySqs.length === 0 && sqs.length === 0) { return null }
-
-    // add other heavy squares connected to added heavy squares
-    for (let i = 0; i < heavySqs.length; i++) {
-      const sid = heavySqs[i].id;
-      // add to heavySqs if adjacent squares are heavy AND not already been added
-      const adjSqIDs = this.getAdjacentSqIDs(sid)
-      for (let adj = 0; adj < adjSqIDs.length; adj++) {
-        const asid = adjSqIDs[adj];
-        // this adjacent is heavy?
-        if (bd[asid[0]][asid[1]][asid[2]] === 2) {
-          // and not already added?
-          let isNotAlreadyAdded = true
-          for (let i2 = 0; i2 < heavySqs.length; i2++) {
-            const sid2 = heavySqs[i2].id;
-            if (sid2[0] === asid[0] && sid2[1] === asid[1] && sid2[2] === asid[2]) {
-              isNotAlreadyAdded = false
-              break
-            }
-          }
-          if (isNotAlreadyAdded) { heavySqs.push({ id: asid, prevState: 2 }) }
-        }
-      }
-    }
-
-    // apply clearing (sqs then heavySqs)
+    // apply clearing
     for (let i = 0; i < sqs.length; i++) {
       const sid = sqs[i].id;
       this.boardData[sid[0]][sid[1]][sid[2]] = 0
     }
-    for (let i = 0; i < heavySqs.length; i++) {
-      const sid = heavySqs[i].id;
-      this.boardData[sid[0]][sid[1]][sid[2]] = 1
-    }
 
-    return [...sqs, ...heavySqs]
+    return sqs
   }
 
   placePiece() {
     const { hoveredSquare, calculatedSqs } = this.render.input
+    const bd = this.boardData
     if (hoveredSquare === null) return
 
     // exit if not possible
@@ -237,18 +200,34 @@ export default class Gameplay {
 
     // reset
     this.render.input.hoveredSquare = null
+    this.remainingPieces--
 
     // apply placement
     for (let i = 0; i < calculatedSqs.length; i++) {
-      const sq = calculatedSqs[i];
-      this.boardData[sq.id[0]][sq.id[1]][sq.id[2]] = sq.isHeavy ? 2 : 1
+      const sq = calculatedSqs[i]
+      bd[sq.id[0]][sq.id[1]][sq.id[2]] = sq.isGolden ? 2 : 1
     }
+
+    // apply spread from new golden square to its adjs
+    for (let i = 0; i < calculatedSqs.length; i++) {
+      const sq = calculatedSqs[i]
+      if (!sq.isGolden) continue
+
+      const asids = this.getAdjacentSqIDs(sq.id)
+      for (let ai = 0; ai < asids.length; ai++) {
+        const asid = asids[ai]
+        if (bd[asid[0]][asid[1]][asid[2]] === 1) {
+          bd[asid[0]][asid[1]][asid[2]] = 2
+        }
+      }
+    }
+
     this.shiftPiecesInventory() // shift and create next piece
 
-    //// test immediate clearing
+    //// should create dummies here to mask the real data
+    //// test immediate clearing & immediate scoring
     const clearedSqs = this.clearFilledRows()
-    // run again to potentially clear a row of previously all heavy squares
-    if (clearedSqs !== null) { this.clearFilledRows() }
+    this.goldPoints += clearedSqs.filter(s => s.prevState === 2).length
   }
 
 }
