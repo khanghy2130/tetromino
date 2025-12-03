@@ -285,8 +285,10 @@ export default class Render {
           if (sqData === 0) { continue }
           if (sqData === 1) {
             p5.fill(150)
-          } else {
+          } else if (sqData === 2) {
             p5.fill(237, 252, 66) // golden
+          } else if (sqData === 3) {
+            p5.fill(240, 38, 216) // destroyer
           }
 
           p5.beginShape();
@@ -412,10 +414,10 @@ export default class Render {
           const sqVerts = this.GRID_VERTICES.faces[id[0]][id[1]][id[2]]
           if (possiblePlacement) {
             if (isGolden) {
-              p5.fill(237, 252, 66, 140)
-            } else {
-              p5.fill(150, 255, 180, 140)
+              if (gp.useGold) { p5.fill(237, 252, 66, 140) }
+              else { p5.fill(240, 38, 216, 140) }
             }
+            else { p5.fill(150, 255, 180, 140) }
           } else {
             p5.fill(242, 82, 82, 140)
           }
@@ -457,7 +459,11 @@ export default class Render {
       const { sqsCoors, hIndex } = this.getPieceImageData(currentPiece.op)
       for (let si = 0; si < sqsCoors.length; si++) {
         const coor = sqsCoors[si]
-        if (hIndex === si) { p5.fill("yellow") } else { p5.fill(140) }
+        if (hIndex === si) {
+          if (gp.useGold) { p5.fill("yellow") }
+          else { p5.fill(240, 38, 216) }
+        }
+        else { p5.fill(140) }
         p5.square(coor[1] * 20 + 80, coor[0] * 20 + 500, 20)
       }
     }
@@ -488,6 +494,9 @@ export default class Render {
   keyPressed() {
     if (this.p5.keyCode === 82) {
       this.gameplay.rotatePiece(true)
+    }
+    if (this.p5.keyCode === 32) {
+      this.gameplay.switchType()
     }
   }
 }

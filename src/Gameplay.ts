@@ -1,7 +1,7 @@
 import GameClient, { getRandomItem } from "./main"
 import Render, { PositionType, SquareID } from "./Render"
 
-export type SquareData = 0 | 1 | 2 // none | normal | golden
+export type SquareData = 0 | 1 | 2 | 3 // none | normal | golden | destroyer
 
 export type OriginalPiece = {
   sqList: sqDirs[]
@@ -43,9 +43,11 @@ export default class Gameplay {
   ]
 
   boardData: SquareData[][][] = [] // face > row > square
+  phase: "INTRO" | "CLEAR" | "PLAY" | "PLACE" | "SPREAD" | "END" = "INTRO"
 
   currentPiece: CurrentPiece | null = null
   nextPieces: [OriginalPiece | null, OriginalPiece | null] = [null, null]
+  useGold: boolean = true
 
   remainingPieces: number = 40
   goldPoints: number = 0
@@ -107,6 +109,7 @@ export default class Gameplay {
         sqList: nextPiece.sqList.map(item => item.slice()),
         hoveredSq: null
       }
+      this.useGold = true
     }
 
     // shift and create new 2nd piece in nextPieces
@@ -157,6 +160,31 @@ export default class Gameplay {
     const sqs: ClearableSquare[] = []
     const bd = this.boardData
 
+    // check for destroyer
+    let destroyerID: SquareID | null = null
+    bigloop: for (let i = 0; i < 3; i++) {
+      for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 3; x++) {
+          if (bd[i][y][x] === 3) {
+            destroyerID = [i, y, x]
+            break bigloop
+          }
+        }
+      }
+    }
+    if (destroyerID) {
+      // clear itself and its adjs, no need to check if already added
+      sqs.push({ id: destroyerID, prevState: 3 })
+      const asids = this.getAdjacentSqIDs(destroyerID)
+      for (let ai = 0; ai < asids.length; ai++) {
+        const asid = asids[ai]
+        const sqData = bd[asid[0]][asid[1]][asid[2]]
+        if (sqData !== 0) {
+          sqs.push({ id: asid, prevState: sqData })
+        }
+      }
+    }
+
     // each face: check horizontal
     for (let i = 0; i < 3; i++) {
       const ni = i === 2 ? 0 : i + 1
@@ -179,6 +207,7 @@ export default class Gameplay {
           // add to list (if not already in there)
           outer: for (let s = 0; s < sids.length; s++) {
             const sid = sids[s]
+            // already added? continue
             for (let ci = 0; ci < sqs.length; ci++) {
               const cid = sqs[ci].id
               if (cid[0] === sid[0] && cid[1] === sid[1] && cid[2] === sid[2]) { continue outer }
@@ -204,12 +233,11 @@ export default class Gameplay {
     // reset
     this.render.input.hoveredSquare = null
     this.remainingPieces--
-    this.shiftPiecesInventory() // shift and create next piece
 
     // apply placement
     for (let i = 0; i < calculatedSqs.length; i++) {
       const sq = calculatedSqs[i]
-      bd[sq.id[0]][sq.id[1]][sq.id[2]] = sq.isGolden ? 2 : 1
+      bd[sq.id[0]][sq.id[1]][sq.id[2]] = sq.isGolden ? (this.useGold ? 2 : 3) : 1
     }
 
     const spreadSources: SquareID[] = []
@@ -262,6 +290,12 @@ export default class Gameplay {
     }
 
     this.goldPoints += clearedSqs.filter(s => s.prevState === 2).length /// immediate scoring
+
+    this.shiftPiecesInventory() // shift and create next piece
+  }
+
+  switchType() {
+    this.useGold = !this.useGold
   }
 
 }
