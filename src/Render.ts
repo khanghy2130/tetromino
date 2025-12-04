@@ -5,6 +5,14 @@ import Gameplay, { OriginalPiece, sqDirs, SquareData } from "./Gameplay"
 export type PositionType = [number, number]
 export type SquareID = [number, number, number] // [face, x, y]
 
+
+// AdvancedSquareVertex
+type ASV = { pos: PositionType, edgePos: PositionType, clockwise: boolean }
+// Animated Placing Square Snapshot
+export type APSSnap = { id: SquareID, aSqVerts: [ASV, ASV, ASV, ASV] | null } // snapshot of a square at one face
+// AnimatedPlacingSquare: array of the same square with all (1-3) snaps
+export type APS = { isGolden: boolean, snaps: APSSnap[] }
+
 export default class Render {
   gc: GameClient
   p5!: P5
@@ -20,6 +28,8 @@ export default class Render {
     faces: PositionType[][][][] // 3 faces each has 3x3 squares each has 4 vertices 
   }
 
+  animatedPlacingSqs: APS[] = []
+
   touchscreenOn: boolean = false
 
   input: {
@@ -27,7 +37,6 @@ export default class Render {
     calculatedSqs: {
       id: SquareID, isGolden: boolean,
       isOutOfBound?: boolean, isOverlapped?: boolean
-      stepsHistory: SquareID[]
     }[]
   } = { hoveredSquare: null, calculatedSqs: [] }
 
@@ -189,9 +198,8 @@ export default class Render {
     }
   }
 
-  getSteppedSqID(sd: sqDirs, id: SquareID): { id: SquareID, stepsHistory: SquareID[] } | null {
+  getSteppedSqID(sd: sqDirs, id: SquareID): SquareID | null {
     id = id.slice() as SquareID
-    const stepsHistory: SquareID[] = [] // true = next face
 
     for (let i = 0; i < sd.length; i++) {
       switch (sd[i]) {
@@ -225,10 +233,9 @@ export default class Render {
           break
 
       }
-      stepsHistory.push(id.slice() as SquareID)
     }
 
-    return { id, stepsHistory }
+    return id
   }
 
   renderButtons() {
@@ -383,17 +390,17 @@ export default class Render {
       if (currentPiece.hoveredSq) {
         const calculatedSqs: this["input"]["calculatedSqs"] = [
           // including center square
-          { id: currentPiece.hoveredSq, stepsHistory: [], isGolden: currentPiece.op.goldenSqIndex === "CENTER" }
+          { id: currentPiece.hoveredSq, isGolden: currentPiece.op.goldenSqIndex === "CENTER" }
         ]
 
         // all other squares beside center square
         for (let i = 0; i < currentPiece.sqList.length; i++) {
-          const item = this.getSteppedSqID(currentPiece.sqList[i], currentPiece.hoveredSq)
-          if (item === null) {
-            calculatedSqs.push({ id: currentPiece.hoveredSq, stepsHistory: [], isGolden: false, isOutOfBound: true })
+          const id = this.getSteppedSqID(currentPiece.sqList[i], currentPiece.hoveredSq)
+          if (id === null) {
+            calculatedSqs.push({ id: currentPiece.hoveredSq, isGolden: false, isOutOfBound: true })
           }
           else {
-            calculatedSqs.push({ id: item.id, stepsHistory: item.stepsHistory, isGolden: currentPiece.op.goldenSqIndex === i })
+            calculatedSqs.push({ id, isGolden: currentPiece.op.goldenSqIndex === i })
           }
         }
 

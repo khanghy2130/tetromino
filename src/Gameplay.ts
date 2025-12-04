@@ -1,5 +1,5 @@
 import GameClient, { getRandomItem } from "./main"
-import Render, { PositionType, SquareID } from "./Render"
+import Render, { APS, APSSnap, PositionType, SquareID } from "./Render"
 
 export type SquareData = 0 | 1 | 2 | 3 // none | normal | golden | destroyer
 
@@ -161,15 +161,13 @@ export default class Gameplay {
     const bd = this.boardData
 
     // check for destroyer
+    const csqs = this.render.input.calculatedSqs
     let destroyerID: SquareID | null = null
-    bigloop: for (let i = 0; i < 3; i++) {
-      for (let y = 0; y < 3; y++) {
-        for (let x = 0; x < 3; x++) {
-          if (bd[i][y][x] === 3) {
-            destroyerID = [i, y, x]
-            break bigloop
-          }
-        }
+    for (let i = 0; i < csqs.length; i++) {
+      const csq = csqs[i]
+      if (csq.isGolden) {
+        if (bd[csq.id[0]][csq.id[1]][csq.id[2]] === 3) { destroyerID = csq.id }
+        break
       }
     }
     if (destroyerID) {
@@ -223,12 +221,13 @@ export default class Gameplay {
   }
 
   placePiece() {
-    const { hoveredSquare, calculatedSqs } = this.render.input
-    const bd = this.boardData
-    if (hoveredSquare === null) return
-
+    // exit if not holding piece or not previewing hover
+    if (this.currentPiece === null || this.currentPiece.hoveredSq === null) return
+    const { calculatedSqs } = this.render.input
     // exit if not possible
     if (calculatedSqs.some(sq => sq.isOverlapped || sq.isOutOfBound)) { return }
+
+    const bd = this.boardData
 
     // reset
     this.render.input.hoveredSquare = null
@@ -279,19 +278,91 @@ export default class Gameplay {
       }
     }
 
+    // apply clearing
     const clearedSqs = this.getClearableSqs()
-    //// should create dummies here to mask the real data (newGoldenSqs & clearedSqs)
-
-
-    /// immedate clearing
     for (let i = 0; i < clearedSqs.length; i++) {
       const sid = clearedSqs[i].id;
       this.boardData[sid[0]][sid[1]][sid[2]] = 0
     }
 
+
+
+
     this.goldPoints += clearedSqs.filter(s => s.prevState === 2).length /// immediate scoring
 
+
+    this.startPlacingAnimation()
+
+    //// should create dummies here to mask the real data (newGoldenSqs & clearedSqs)
+
+    // this is last because it set currentPiece to null
     this.shiftPiecesInventory() // shift and create next piece
+  }
+
+  getFirstSnapID(id: SquareID, sqdirs: sqDirs): { id: SquareID, faceChanges: boolean[] } {
+    const faceChanges: boolean[] = []
+    for (let i = 0; i < sqdirs.length; i++) {
+      switch (sqdirs[i]) {
+        case "U":
+          id[1]++
+          break
+        case "R":
+          id[2]++
+          break
+        case "D":
+          if (id[1] === 0) {
+            if (faceChanges.length === 0) { faceChanges.push(true) }
+            else { faceChanges.push(faceChanges[0]) }
+          }
+          id[1]--
+          break
+        case "L":
+          if (id[2] === 0) {
+            if (faceChanges.length === 0) { faceChanges.push(false) }
+            else { faceChanges.push(faceChanges[0]) }
+          }
+          id[2]--
+          break
+      }
+    }
+
+    return { id, faceChanges }
+  }
+
+  startPlacingAnimation() {
+    const cp = this.currentPiece
+    if (!cp || !cp.hoveredSq) { return }
+
+    /////const csqs = this.render.input.calculatedSqs
+
+    // set up APS with only id in snaps
+    const animatedPlacingSqs: APS[] = [{
+      isGolden: cp.op.goldenSqIndex === "CENTER",
+      snaps: [{ id: cp.hoveredSq.slice() as SquareID, aSqVerts: null }]
+    }]
+    // all other squares beside center square
+    for (let i = 0; i < cp.sqList.length; i++) {
+      const { id, faceChanges } = this.getFirstSnapID(cp.hoveredSq.slice() as SquareID, cp.sqList[i])
+      const snaps: APSSnap[] = [{ id, aSqVerts: null }] // default face snap
+
+      // add 2nd & 3rd snaps
+      while (faceChanges.length > 0) {
+        const isNextFace = faceChanges.shift()
+        const lastID = snaps[snaps.length - 1].id
+        if (isNextFace) {
+          const faceIndex = lastID[0] === 2 ? 0 : lastID[0] + 1
+          snaps.push({ id: [faceIndex, lastID[2], -lastID[1] - 1], aSqVerts: null })
+        } else {
+          const faceIndex = lastID[0] === 0 ? 2 : lastID[0] - 1
+          snaps.push({ id: [faceIndex, -lastID[2] - 1, lastID[1]], aSqVerts: null })
+        }
+      }
+      animatedPlacingSqs.push({ isGolden: cp.op.goldenSqIndex === i, snaps: snaps })
+    }
+
+    ////// calculate aSqVert for all squares' snaps'
+
+    console.log(animatedPlacingSqs)
   }
 
   switchType() {
