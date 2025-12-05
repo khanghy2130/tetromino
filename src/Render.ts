@@ -1,6 +1,6 @@
 import type P5 from "p5"
 import GameClient from "./main"
-import Gameplay, { OriginalPiece, sqDirs, SquareData } from "./Gameplay"
+import Gameplay, { ClearableSquare, OriginalPiece, sqDirs, SquareData } from "./Gameplay"
 
 export type PositionType = [number, number]
 export type SquareID = [number, number, number] // [face, x, y]
@@ -30,6 +30,9 @@ export default class Render {
 
   animatedPlacingSqs: APS[] = []
   highestSnapsCount: number = 0
+
+  animatedSpreadingSqs: ({ id: SquareID, prg: number })[] = []
+  animatedClearingSqs: ClearableSquare[] = []
 
   touchscreenOn: boolean = false
 
@@ -147,6 +150,7 @@ export default class Render {
   }
 
   getHoveredSquare(): SquareID | null {
+    if (this.gameplay.phase !== "PLAY") { return null } // not play phase
     const { verts } = this.GRID_VERTICES
     const mousePos: PositionType = [this.gc.mx, this.gc.my]
     let faceIndex: number | null = null;
@@ -241,6 +245,7 @@ export default class Render {
 
   renderButtons() {
     const { p5 } = this
+    const _30deg = Math.PI / 180 * 30
 
     // temp setup
     p5.fill(100)
@@ -249,36 +254,46 @@ export default class Render {
     // top left button
     p5.push()
     p5.translate(105, 55)
-    p5.rotate(-30)
+    p5.rotate(-_30deg)
     p5.rect(0, 0, 150, 35, 10)
     p5.pop()
 
     // top right button
     p5.push()
     p5.translate(295, 55)
-    p5.rotate(30)
+    p5.rotate(_30deg)
     p5.rect(0, 0, 150, 35, 10)
     p5.pop()
 
     // bottom left button
     p5.push()
     p5.translate(105, 385)
-    p5.rotate(30)
+    p5.rotate(_30deg)
     p5.rect(0, 0, 150, 35, 10)
     p5.pop()
 
     // bottom right button
     p5.push()
     p5.translate(295, 385)
-    p5.rotate(-30)
+    p5.rotate(-_30deg)
     p5.rect(0, 0, 150, 35, 10)
     p5.pop()
 
   }
 
+  isThePlacingSquare(id: SquareID): boolean {
+    if (this.gameplay.phase !== "PLACE") { return false }
+    for (let i = 0; i < this.animatedPlacingSqs.length; i++) {
+      const sqs = this.animatedPlacingSqs[i]
+      const sid = sqs.snaps[sqs.snaps.length - 1].id
+      if (id[0] === sid[0] && id[1] === sid[1] && id[2] === sid[2]) { return true }
+    }
+    return false
+  }
+
   renderExistingSquares() {
     const { boardData } = this.gameplay
-    const { p5 } = this
+    const p5 = this.p5
 
     p5.stroke(0)
     p5.strokeWeight(4)
@@ -290,17 +305,16 @@ export default class Render {
           const sqVerts = sqs[rr]
 
           const sd = boardData[i][r][rr]
-          if (sd === 0) { continue }
-          else {
-            const sqColor = this.getSqColor(boardData[i][r][rr])
-            p5.fill(sqColor[0], sqColor[1], sqColor[2])
-          }
+          if (sd === 0) { continue } // no square here
 
-          p5.beginShape();
+          // check if is placing phase then don't render placing squares
+          if (this.isThePlacingSquare([i, r, rr])) { continue }
+          p5.fill(this.getSqColor(boardData[i][r][rr]))
+          p5.beginShape()
           for (let sv = 0; sv < sqVerts.length; sv++) {
-            p5.vertex(sqVerts[sv][0], sqVerts[sv][1]);
+            p5.vertex(sqVerts[sv][0], sqVerts[sv][1])
           }
-          p5.endShape(p5.CLOSE);
+          p5.endShape(p5.CLOSE)
         }
       }
     }
@@ -343,12 +357,13 @@ export default class Render {
     return { sqsCoors, hIndex }
   }
 
-  getSqColor(sd: SquareData): [number, number, number] {
-    if (sd === 1) { return [200, 200, 200] }
-    if (sd === 2) { return [237, 252, 66] } // golden
-    if (sd === 3) { return [240, 38, 216] }// destroyer
-    return [0, 0, 0]
+  getSqColor(sd: SquareData): P5.Color {
+    if (sd === 1) { return this.p5.color(200, 200, 200) }
+    if (sd === 2) { return this.p5.color(237, 252, 66) } // golden
+    if (sd === 3) { return this.p5.color(240, 38, 216) }// destroyer
+    return this.p5.color(0, 0, 0)
   }
+
 
   draw() {
     const gp = this.gameplay
@@ -409,7 +424,6 @@ export default class Render {
           }
         }
 
-
         // check if overlapped (also set possible)
         let possiblePlacement = true
         for (let i = 0; i < calculatedSqs.length; i++) {
@@ -445,8 +459,6 @@ export default class Render {
         this.input.calculatedSqs = calculatedSqs
       }
 
-
-
     }
 
 
@@ -480,106 +492,193 @@ export default class Render {
     }
 
 
-    // render placing animation
-    p5.stroke(0)
-    p5.strokeWeight(4)
-    if (gp.phase === "PLACE") {
-      const { PI, cos, sin } = Math
-      const SL = this.CONSTS.SL
+    // render PLACE, SPREAD, CLEAR animations
+    if (gp.phase !== "PLAY") {
+      p5.stroke(0)
+      p5.strokeWeight(4)
+      let colorValue: P5.Color = p5.color(0)
+      const { animatedSpreadingSqs, animatedClearingSqs, GRID_VERTICES } = this
 
-      if (gp.placingSubphase === "SLIDE") {
-        const firstFace = this.animatedPlacingSqs[0].snaps[0].id[0]
-        let enterDeg = -90 // first face case
-        // all squares are at the same face on first snap
-        if (firstFace === 1) { enterDeg = 30 }
-        else if (firstFace === 2) { enterDeg = 150 }
-        enterDeg = PI / 180 * enterDeg
-        const calculatedPrg = 1 - (1 - Math.pow(1 - gp.ug, 3))
-        const offX = cos(enterDeg) * calculatedPrg * 300
-        const offY = sin(enterDeg) * calculatedPrg * 300
+      // render clearing squares
+      for (let i = animatedClearingSqs.length - 1; i >= 0; i--) {
+        const acsq = animatedClearingSqs[i]
+        // check if is placing phase then don't render placing squares
+        if (this.isThePlacingSquare(acsq.id)) { continue }
 
-        p5.stroke(0)
-        p5.strokeWeight(4)
-        // for each square
-        for (let i = 0; i < 4; i++) {
-          const aps = this.animatedPlacingSqs[i]
-          const snap = aps.snaps[0] // FIRST snap
+        p5.fill(this.getSqColor(acsq.prevState))
+        const sqVerts = GRID_VERTICES.faces[acsq.id[0]][acsq.id[1]][acsq.id[2]]
+        const centerPos: PositionType = [
+          (sqVerts[0][0] + sqVerts[1][0] + sqVerts[2][0] + sqVerts[3][0]) / 4,
+          (sqVerts[0][1] + sqVerts[1][1] + sqVerts[2][1] + sqVerts[3][1]) / 4
+        ]
 
-          const sqColor = this.getSqColor(aps.sqData)
-          p5.fill(sqColor[0], sqColor[1], sqColor[2])
-          p5.beginShape()
-          // for each vertex
-          for (let v = 0; v < 4; v++) {
-            const { edgeVert, distCount } = snap.aSqVerts![v]
-            p5.vertex(
-              edgeVert[0] + cos(snap.endDeg!) * distCount * SL + offX,
-              edgeVert[1] + sin(snap.endDeg!) * distCount * SL + offY
-            )
-          }
-          p5.endShape(p5.CLOSE)
+        p5.push()
+        p5.translate(centerPos[0], centerPos[1])
+        if (acsq.prg > 0) {
+          const t = acsq.prg
+          const s = 1 - t + 4 * t * (1 - t) * (1.8 - 1) // last one is adjustable peak
+          p5.scale(s)
         }
-        // update ug
-        if (gp.ug < 1) {
-          gp.ug = Math.min(1, gp.ug + 0.05)
+        p5.beginShape()
+        for (let sv = 0; sv < sqVerts.length; sv++) {
+          p5.vertex(sqVerts[sv][0] - centerPos[0], sqVerts[sv][1] - centerPos[1])
+        }
+        p5.endShape(p5.CLOSE)
+        p5.pop()
+
+        if (gp.phase === "CLEAR") {
+          acsq.prg += 0.05
+          if (acsq.prg > 1) {
+            animatedClearingSqs.shift() // always first to leave
+          }
+        }
+      }
+
+      // render spreading squares
+      for (let i = animatedSpreadingSqs.length - 1; i >= 0; i--) {
+        const assq = animatedSpreadingSqs[i]
+        // check if is placing phase then don't render placing squares
+        if (this.isThePlacingSquare(assq.id)) { continue }
+
+        if (assq.prg < 0) {
+          colorValue = this.getSqColor(1)
+        } else if (assq.prg < 1) {
+          colorValue = p5.color(250)
         } else {
-          gp.ug = 0
-          if (this.highestSnapsCount > 1) { gp.placingSubphase = "WRAP1" }
-          else { gp.phase = "SPREAD" }
+          colorValue = this.getSqColor(2)
         }
-      } else { // wrap 1 & 2
-        for (let i = 0; i < 4; i++) {
-          const aps = this.animatedPlacingSqs[i]
 
-          // if current snap then animate rotation, else render at endDeg
-          let snap = aps.snaps[0]
-          let isRotating = false
-          if (gp.placingSubphase === "WRAP1") {
-            if (aps.snaps.length > 1) {
-              snap = aps.snaps[1]
-              isRotating = true
-            }
-          } else {
-            if (aps.snaps.length === 2) { snap = aps.snaps[1] }
-            else if (aps.snaps.length === 3) {
-              snap = aps.snaps[2]
-              isRotating = true
-            }
+        p5.fill(colorValue)
+        p5.beginShape()
+        const sqVerts = GRID_VERTICES.faces[assq.id[0]][assq.id[1]][assq.id[2]]
+        for (let sv = 0; sv < sqVerts.length; sv++) {
+          p5.vertex(sqVerts[sv][0], sqVerts[sv][1])
+        }
+        p5.endShape(p5.CLOSE)
+
+        if (gp.phase === "SPREAD") {
+          assq.prg += 0.12
+          if (assq.prg > 1) {
+            animatedSpreadingSqs.shift() // always first to leave
           }
+        }
+      }
 
-          const sqColor = this.getSqColor(aps.sqData)
-          p5.fill(sqColor[0], sqColor[1], sqColor[2])
-          p5.beginShape()
-          if (isRotating) {
-            const d = p5.map(gp.ug, 0, 1, snap.startDeg!, snap.endDeg!)
+      if (gp.phase === "PLACE") {
+        const { PI, cos, sin } = Math
+        const SL = this.CONSTS.SL
+
+        if (gp.placingSubphase === "SLIDE") {
+          const firstFace = this.animatedPlacingSqs[0].snaps[0].id[0]
+          let enterDeg = -90 // first face case
+          // all squares are at the same face on first snap
+          if (firstFace === 1) { enterDeg = 30 }
+          else if (firstFace === 2) { enterDeg = 150 }
+          enterDeg = PI / 180 * enterDeg
+          const calculatedPrg = 1 - (1 - Math.pow(1 - gp.ug, 3))
+          const offX = cos(enterDeg) * calculatedPrg * 300
+          const offY = sin(enterDeg) * calculatedPrg * 300
+
+          p5.stroke(0)
+          p5.strokeWeight(4)
+          // for each square
+          for (let i = 0; i < 4; i++) {
+            const aps = this.animatedPlacingSqs[i]
+            const snap = aps.snaps[0] // FIRST snap
+
+            p5.fill(this.getSqColor(aps.sqData))
+            p5.beginShape()
+            // for each vertex
             for (let v = 0; v < 4; v++) {
               const { edgeVert, distCount } = snap.aSqVerts![v]
               p5.vertex(
-                edgeVert[0] + cos(d) * distCount * SL,
-                edgeVert[1] + sin(d) * distCount * SL
+                edgeVert[0] + cos(snap.endDeg!) * distCount * SL + offX,
+                edgeVert[1] + sin(snap.endDeg!) * distCount * SL + offY
               )
             }
-          } else {
-            for (let v = 0; v < 4; v++) {
-              const { edgeVert, distCount } = snap.aSqVerts![v]
-              p5.vertex(
-                edgeVert[0] + cos(snap.endDeg!) * distCount * SL,
-                edgeVert[1] + sin(snap.endDeg!) * distCount * SL
-              )
-            }
+            p5.endShape(p5.CLOSE)
           }
-          p5.endShape(p5.CLOSE)
-        }
-        // update ug
-        if (gp.ug < 1) {
-          gp.ug = Math.min(1, gp.ug + 0.1)
-        } else {
-          gp.ug = 0
-          if (gp.placingSubphase === "WRAP1") {
-            if (this.highestSnapsCount > 2) { gp.placingSubphase = "WRAP2" }
+          // update ug
+          if (gp.ug < 1) {
+            gp.ug = Math.min(1, gp.ug + 0.05)
+          } else {
+            gp.ug = 0
+            if (this.highestSnapsCount > 1) { gp.placingSubphase = "WRAP1" }
             else { gp.phase = "SPREAD" }
-          } else { // wrap2 done
-            gp.phase = "SPREAD"
           }
+        } else { // wrap 1 & 2
+          for (let i = 0; i < 4; i++) {
+            const aps = this.animatedPlacingSqs[i]
+
+            // if current snap then animate rotation, else render at endDeg
+            let snap = aps.snaps[0]
+            let isRotating = false
+            if (gp.placingSubphase === "WRAP1") {
+              if (aps.snaps.length > 1) {
+                snap = aps.snaps[1]
+                isRotating = true
+              }
+            } else {
+              if (aps.snaps.length === 2) { snap = aps.snaps[1] }
+              else if (aps.snaps.length === 3) {
+                snap = aps.snaps[2]
+                isRotating = true
+              }
+            }
+
+            p5.fill(this.getSqColor(aps.sqData))
+            p5.beginShape()
+            if (isRotating) {
+              const d = p5.map(gp.ug, 0, 1, snap.startDeg!, snap.endDeg!)
+              for (let v = 0; v < 4; v++) {
+                const { edgeVert, distCount } = snap.aSqVerts![v]
+                p5.vertex(
+                  edgeVert[0] + cos(d) * distCount * SL,
+                  edgeVert[1] + sin(d) * distCount * SL
+                )
+              }
+            } else {
+              for (let v = 0; v < 4; v++) {
+                const { edgeVert, distCount } = snap.aSqVerts![v]
+                p5.vertex(
+                  edgeVert[0] + cos(snap.endDeg!) * distCount * SL,
+                  edgeVert[1] + sin(snap.endDeg!) * distCount * SL
+                )
+              }
+            }
+            p5.endShape(p5.CLOSE)
+          }
+          // update ug
+          if (gp.ug < 1) {
+            gp.ug = Math.min(1, gp.ug + 0.1)
+          } else {
+            gp.ug = 0
+            if (gp.placingSubphase === "WRAP1") {
+              if (this.highestSnapsCount > 2) { gp.placingSubphase = "WRAP2" }
+              else { gp.phase = "SPREAD" }
+            } else { // wrap2 done
+              gp.phase = "SPREAD"
+            }
+          }
+        }
+      }
+
+      // done spreading? update delay
+      if (gp.phase === "SPREAD") {
+        if (animatedSpreadingSqs.length === 0) {
+          if (gp.ug < 1) {
+            gp.ug += 0.2
+          } else {
+            gp.ug = 0
+            gp.phase = "CLEAR"
+          }
+        }
+      }
+
+      // done clearing? change to play phase
+      if (gp.phase === "CLEAR") {
+        if (animatedClearingSqs.length === 0) {
+          gp.phase = "PLAY"
         }
       }
     }

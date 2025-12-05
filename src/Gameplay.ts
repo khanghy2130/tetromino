@@ -1,6 +1,8 @@
 import GameClient, { getRandomItem } from "./main"
 import Render, { APS, APSSnap, PositionType, SquareID } from "./Render"
 
+type MakeOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
+
 export type SquareData = 0 | 1 | 2 | 3 // none | normal | golden | destroyer
 
 export type OriginalPiece = {
@@ -8,7 +10,7 @@ export type OriginalPiece = {
   goldenSqIndex: number | "CENTER" // index of square
 }
 
-type ClearableSquare = { id: SquareID, prevState: SquareData }
+export type ClearableSquare = { id: SquareID, prevState: SquareData, prg: number }
 
 type CurrentPiece = {
   op: OriginalPiece
@@ -148,8 +150,8 @@ export default class Gameplay {
   }
 
   // clear and return list of cleared squares, empty array if no clearing
-  getClearableSqs(): ClearableSquare[] {
-    const sqs: ClearableSquare[] = []
+  getClearableSqs(): Required<ClearableSquare>[] {
+    const sqs: MakeOptional<ClearableSquare, "prg">[] = []
     const bd = this.boardData
 
     // check for destroyer
@@ -209,20 +211,26 @@ export default class Gameplay {
       }
     }
 
-    return sqs
+    // add .prg
+    for (let i = 0; i < sqs.length; i++) {
+      sqs[i].prg = -0.1 - i * 0.1 // delay between clearing squares
+    }
+    return sqs as ClearableSquare[]
   }
 
   placePiece() {
+    const render = this.render
+
     // exit if not holding piece or not previewing hover
     if (this.currentPiece === null || this.currentPiece.hoveredSq === null) return
-    const { calculatedSqs } = this.render.input
+    const { calculatedSqs } = render.input
     // exit if not possible
     if (calculatedSqs.some(sq => sq.isOverlapped || sq.isOutOfBound)) { return }
 
     const bd = this.boardData
 
     // reset
-    this.render.input.hoveredSquare = null
+    render.input.hoveredSquare = null
     this.remainingPieces--
 
     // apply placement
@@ -277,15 +285,16 @@ export default class Gameplay {
       this.boardData[sid[0]][sid[1]][sid[2]] = 0
     }
 
+    render.animatedSpreadingSqs = newGoldenSqs.map((sid, i) => ({
+      id: sid, prg: -0.1 - i * 0.3 // delay between spreading squares
+    }))
+    render.animatedClearingSqs = clearedSqs
 
 
-
-    this.goldPoints += clearedSqs.filter(s => s.prevState === 2).length /// immediate scoring
+    ////// this.goldPoints += clearedSqs.filter(s => s.prevState === 2).length
 
 
     this.startPlacingAnimation()
-
-    //// should create dummies here to mask the real data (newGoldenSqs & clearedSqs)
 
     // set currentPiece to null, reset useGold
     this.shiftPiecesInventory() // shift and create next piece
