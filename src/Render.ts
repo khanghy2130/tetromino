@@ -29,6 +29,7 @@ export default class Render {
   }
 
   animatedPlacingSqs: APS[] = []
+  highestSnapsCount: number = 0
 
   touchscreenOn: boolean = false
 
@@ -288,14 +289,11 @@ export default class Render {
         for (let rr = 0; rr < 3; rr++) {
           const sqVerts = sqs[rr]
 
-          const sqData: SquareData = boardData[i][r][rr]
-          if (sqData === 0) { continue }
-          if (sqData === 1) {
-            p5.fill(150)
-          } else if (sqData === 2) {
-            p5.fill(237, 252, 66) // golden
-          } else if (sqData === 3) {
-            p5.fill(240, 38, 216) // destroyer
+          const sd = boardData[i][r][rr]
+          if (sd === 0) { continue }
+          else {
+            const sqColor = this.getSqColor(boardData[i][r][rr])
+            p5.fill(sqColor[0], sqColor[1], sqColor[2])
           }
 
           p5.beginShape();
@@ -343,6 +341,13 @@ export default class Render {
       }
     }
     return { sqsCoors, hIndex }
+  }
+
+  getSqColor(sd: SquareData): [number, number, number] {
+    if (sd === 1) { return [200, 200, 200] }
+    if (sd === 2) { return [237, 252, 66] } // golden
+    if (sd === 3) { return [240, 38, 216] }// destroyer
+    return [0, 0, 0]
   }
 
   draw() {
@@ -422,11 +427,11 @@ export default class Render {
           if (possiblePlacement) {
             if (isGolden) {
               if (gp.useGold) { p5.fill(237, 252, 66, 140) }
-              else { p5.fill(240, 38, 216, 140) }
+              else { p5.fill(240, 38, 216, 140) } // destroyer
             }
-            else { p5.fill(150, 255, 180, 140) }
+            else { p5.fill(150, 255, 180, 140) } // normal
           } else {
-            p5.fill(242, 82, 82, 140)
+            p5.fill(242, 82, 82, 140) // red
           }
           p5.noStroke()
           p5.beginShape();
@@ -435,7 +440,6 @@ export default class Render {
           }
           p5.endShape(p5.CLOSE);
         }
-
 
         // for click action
         this.input.calculatedSqs = calculatedSqs
@@ -476,45 +480,116 @@ export default class Render {
     }
 
 
+    // render placing animation
+    p5.stroke(0)
+    p5.strokeWeight(4)
+    if (gp.phase === "PLACE") {
+      const { PI, cos, sin } = Math
+      const SL = this.CONSTS.SL
+
+      if (gp.placingSubphase === "SLIDE") {
+        const firstFace = this.animatedPlacingSqs[0].snaps[0].id[0]
+        let enterDeg = -90 // first face case
+        // all squares are at the same face on first snap
+        if (firstFace === 1) { enterDeg = 30 }
+        else if (firstFace === 2) { enterDeg = 150 }
+        enterDeg = PI / 180 * enterDeg
+        const calculatedPrg = 1 - (1 - Math.pow(1 - gp.ug, 3))
+        const offX = cos(enterDeg) * calculatedPrg * 300
+        const offY = sin(enterDeg) * calculatedPrg * 300
+
+        p5.stroke(0)
+        p5.strokeWeight(4)
+        // for each square
+        for (let i = 0; i < 4; i++) {
+          const aps = this.animatedPlacingSqs[i]
+          const snap = aps.snaps[0] // FIRST snap
+
+          const sqColor = this.getSqColor(aps.sqData)
+          p5.fill(sqColor[0], sqColor[1], sqColor[2])
+          p5.beginShape()
+          // for each vertex
+          for (let v = 0; v < 4; v++) {
+            const { edgeVert, distCount } = snap.aSqVerts![v]
+            p5.vertex(
+              edgeVert[0] + cos(snap.endDeg!) * distCount * SL + offX,
+              edgeVert[1] + sin(snap.endDeg!) * distCount * SL + offY
+            )
+          }
+          p5.endShape(p5.CLOSE)
+        }
+        // update ug
+        if (gp.ug < 1) {
+          gp.ug = Math.min(1, gp.ug + 0.05)
+        } else {
+          gp.ug = 0
+          if (this.highestSnapsCount > 1) { gp.placingSubphase = "WRAP1" }
+          else { gp.phase = "SPREAD" }
+        }
+      } else { // wrap 1 & 2
+        for (let i = 0; i < 4; i++) {
+          const aps = this.animatedPlacingSqs[i]
+
+          // if current snap then animate rotation, else render at endDeg
+          let snap = aps.snaps[0]
+          let isRotating = false
+          if (gp.placingSubphase === "WRAP1") {
+            if (aps.snaps.length > 1) {
+              snap = aps.snaps[1]
+              isRotating = true
+            }
+          } else {
+            if (aps.snaps.length === 2) { snap = aps.snaps[1] }
+            else if (aps.snaps.length === 3) {
+              snap = aps.snaps[2]
+              isRotating = true
+            }
+          }
+
+          const sqColor = this.getSqColor(aps.sqData)
+          p5.fill(sqColor[0], sqColor[1], sqColor[2])
+          p5.beginShape()
+          if (isRotating) {
+            const d = p5.map(gp.ug, 0, 1, snap.startDeg!, snap.endDeg!)
+            for (let v = 0; v < 4; v++) {
+              const { edgeVert, distCount } = snap.aSqVerts![v]
+              p5.vertex(
+                edgeVert[0] + cos(d) * distCount * SL,
+                edgeVert[1] + sin(d) * distCount * SL
+              )
+            }
+          } else {
+            for (let v = 0; v < 4; v++) {
+              const { edgeVert, distCount } = snap.aSqVerts![v]
+              p5.vertex(
+                edgeVert[0] + cos(snap.endDeg!) * distCount * SL,
+                edgeVert[1] + sin(snap.endDeg!) * distCount * SL
+              )
+            }
+          }
+          p5.endShape(p5.CLOSE)
+        }
+        // update ug
+        if (gp.ug < 1) {
+          gp.ug = Math.min(1, gp.ug + 0.1)
+        } else {
+          gp.ug = 0
+          if (gp.placingSubphase === "WRAP1") {
+            if (this.highestSnapsCount > 2) { gp.placingSubphase = "WRAP2" }
+            else { gp.phase = "SPREAD" }
+          } else { // wrap2 done
+            gp.phase = "SPREAD"
+          }
+        }
+      }
+    }
+
+
     //// test text
     p5.fill(250)
     p5.textSize(24)
     // p5.text(this.input.hoveredSquare + "", 50, 20)
     p5.text(gp.remainingPieces + "\n" + gp.goldPoints, 370, 40)
-
-
-
-    ////// test render first snap
-    if (this.animatedPlacingSqs.length > 0) {
-      const { cos, sin } = Math
-      const SL = this.CONSTS.SL
-      p5.stroke(0)
-      p5.strokeWeight(4)
-      // for each square
-      for (let i = 0; i < 4; i++) {
-        const aps = this.animatedPlacingSqs[i]
-        const snap = aps.snaps[0] // FIRST snap
-
-        if (aps.sqData === 1) {
-          p5.fill(200)
-        } else if (aps.sqData === 2) {
-          p5.fill(237, 252, 66) // golden
-        } else if (aps.sqData === 3) {
-          p5.fill(240, 38, 216) // destroyer
-        }
-        p5.beginShape()
-        // for each vertex
-        for (let v = 0; v < 4; v++) {
-          const { edgeVert, distCount } = snap.aSqVerts![v]
-          p5.vertex(
-            edgeVert[0] + cos(snap.endDeg!) * distCount * SL,
-            edgeVert[1] + sin(snap.endDeg!) * distCount * SL
-          )
-        }
-        p5.endShape(p5.CLOSE)
-      }
-    }
-
 
 
 

@@ -30,27 +30,18 @@ export default class Gameplay {
     [["U"], ["L"], ["L", "D"]], // Z
     [["U"], ["R"], ["D"]], // T
     [["D"], ["U"], ["U", "U"]], // I
-
-    /*
-    [[0, 0], [1, 0], [0, 1], [0, 2]], // L
-    [[0, 0], [1, 0], [1, 1], [1, 2]], // J
-    [[1, 0], [1, 1], [0, 1], [0, 2]], // S (first item is not [0,0])
-    [[0, 0], [0, 1], [1, 1], [1, 2]], // Z
-    [[0, 0], [0, 1], [0, 2], [1, 1]], // T
-    [[0, 0], [0, 1], [0, 2], [0, -1]] // I
-    */
-
   ]
 
   boardData: SquareData[][][] = [] // face > row > square
-  phase: "INTRO" | "CLEAR" | "PLAY" | "PLACE" | "SPREAD" | "END" = "INTRO"
+  phase: "INTRO" | "CLEAR" | "PLAY" | "PLACE" | "SPREAD" | "END" = "PLAY"
   placingSubphase: "SLIDE" | "WRAP1" | "WRAP2" = "SLIDE"
+  ug: number = 0 // universal progress for all animations
 
   currentPiece: CurrentPiece | null = null
   nextPieces: [OriginalPiece | null, OriginalPiece | null] = [null, null]
   useGold: boolean = true
 
-  remainingPieces: number = 40
+  remainingPieces: number = 0
   goldPoints: number = 0
 
   lastHoveredFaceIndex: 0 | 1 | 2 = 1 // second face is default
@@ -334,7 +325,6 @@ export default class Gameplay {
     const { SL, GC } = this.render.CONSTS
     const { PI, cos, sin } = Math
 
-
     // loop through each snap: add aSqVerts, startDeg, endDeg
     for (let snapIndex = 0; snapIndex < snaps.length; snapIndex++) {
       const snap = snaps[snapIndex]
@@ -370,8 +360,8 @@ export default class Gameplay {
         snap.startDeg = deg2 - _60deg
         snap.endDeg = deg2
       } else {
-        snap.startDeg = deg + _60deg
-        snap.endDeg = deg
+        snap.startDeg = deg - _60deg
+        snap.endDeg = deg - _60deg - _60deg
       }
     }
 
@@ -381,8 +371,12 @@ export default class Gameplay {
     const cp = this.currentPiece
     if (!cp || !cp.hoveredSq) { return }
 
-    //// set phase
+    // set subphase
+    this.phase = "PLACE"
+    this.placingSubphase = "SLIDE"
+    this.ug = 0
 
+    let highestSnapsCount = 1
     // set up APS with only id in snaps
     const specialSqData: SquareData = this.useGold ? 2 : 3
     const animatedPlacingSqs: APS[] = [{
@@ -394,6 +388,9 @@ export default class Gameplay {
       const { id, faceChanges } = this.getFirstSnapID(
         cp.hoveredSq.slice() as SquareID, cp.sqList[i]
       )
+      if (faceChanges.length + 1 > highestSnapsCount) {
+        highestSnapsCount = faceChanges.length + 1
+      }
       const snaps: APSSnap[] = [{ id }] // default face snap
 
       // add 2nd & 3rd snaps
@@ -419,7 +416,7 @@ export default class Gameplay {
     }
 
     this.render.animatedPlacingSqs = animatedPlacingSqs
-    console.log(animatedPlacingSqs)
+    this.render.highestSnapsCount = highestSnapsCount
   }
 
   switchType() {
