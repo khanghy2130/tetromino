@@ -247,10 +247,8 @@ export default class Render {
             id[2]--
           }
           break
-
       }
     }
-
     return id
   }
 
@@ -748,15 +746,9 @@ export default class Render {
     p5.noStroke()
     p5.fill(250)
     p5.textSize(24)
-    // p5.text(this.input.hoveredSquare + "", 50, 20)
     p5.text(gp.remainingPieces + "\n" + gp.goldPoints, 370, 40)
 
-
-
-
-
-
-
+    if (gp.gameOverMessage) console.log(gp.gameOverMessage)
 
 
   }

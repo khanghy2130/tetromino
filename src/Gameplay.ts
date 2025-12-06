@@ -45,7 +45,7 @@ export default class Gameplay {
 
   remainingPieces: number = 0
   goldPoints: number = 0
-
+  gameOverMessage: "NO_PIECES" | "NO_SPACE" | null = null // null is not game over yet
   lastHoveredFaceIndex: 0 | 1 | 2 = 1 // second face is default
 
 
@@ -74,6 +74,7 @@ export default class Gameplay {
     this.remainingPieces = 30
     this.goldPoints = 0
     this.currentPiece = null
+    this.gameOverMessage = null
 
     // set starting nextPieces
     this.nextPieces = [this.getNewPiece(), this.getNewPiece()]
@@ -97,6 +98,7 @@ export default class Gameplay {
     const nextPiece = this.nextPieces[0]
     if (nextPiece === null) {
       this.currentPiece = null // out of pieces
+      this.gameOverMessage = "NO_PIECES"
     } else {
       this.currentPiece = {
         op: nextPiece,
@@ -128,7 +130,11 @@ export default class Gameplay {
   rotatePiece(clockwise: boolean) {
     const { currentPiece } = this
     if (!currentPiece) return
-    currentPiece.sqList = currentPiece.sqList.map(
+    currentPiece.sqList = this.rotateSqList(currentPiece.sqList, clockwise)
+  }
+
+  rotateSqList(sqList: sqDirs[], clockwise: boolean): sqDirs[] {
+    return sqList.map(
       sq => sq.map(d => this.getRotatedDir(d, clockwise))
     )
   }
@@ -218,6 +224,34 @@ export default class Gameplay {
     return sqs as ClearableSquare[]
   }
 
+  hasPossiblePlacement(): boolean {
+    if (!this.currentPiece) { return true }
+    const getSteppedSqID = this.render.getSteppedSqID.bind(this.render)
+
+    // for each empty sq
+    for (let i = 0; i < 3; i++) {
+      for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 3; x++) {
+          const sd = this.boardData[i][y][x]
+          if (sd !== 0) { continue } // skip not empty pos
+
+          let sqList = this.currentPiece.sqList
+          // for each of 4 rotations
+          loop1: for (let r = 0; r < 4; r++) {
+            sqList = this.rotateSqList(sqList, true)
+            for (let sli = 0; sli < sqList.length; sli++) {
+              const id = getSteppedSqID(sqList[sli], [i, y, x])
+              // out of bound || this pos is occupied? 
+              if (id === null || this.boardData[id[0]][id[1]][id[2]] !== 0) { continue loop1 }
+            }
+            return true // if reach here then is placeable
+          }
+        }
+      }
+    }
+    return false
+  }
+
   placePiece() {
     const render = this.render
 
@@ -295,6 +329,7 @@ export default class Gameplay {
 
     // set currentPiece to null, reset useGold
     this.shiftPiecesInventory() // shift and create next piece
+    if (!this.hasPossiblePlacement()) { this.gameOverMessage = "NO_SPACE" }
   }
 
   getFirstSnapID(id: SquareID, sqdirs: sqDirs): { id: SquareID, faceChanges: boolean[] } {
