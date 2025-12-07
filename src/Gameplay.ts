@@ -35,7 +35,7 @@ export default class Gameplay {
   ]
 
   boardData: SquareData[][][] = [] // face > row > square
-  phase: "INTRO" | "CLEAR" | "PLAY" | "PLACE" | "SPREAD" | "END" = "PLAY"
+  phase: "CLEAR" | "PLAY" | "PLACE" | "SPREAD" | "END" = "PLAY"
   placingSubphase: "SLIDE" | "WRAP1" | "WRAP2" = "SLIDE"
   ug: number = 0 // universal progress for all animations
 
@@ -49,11 +49,8 @@ export default class Gameplay {
   lastHoveredFaceIndex: 0 | 1 | 2 = 1 // second face is default
 
 
-
-
   constructor(gameClient: GameClient) {
     this.gc = gameClient
-
     this.setUpNewGame()
   }
 

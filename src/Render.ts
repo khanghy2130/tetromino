@@ -44,9 +44,9 @@ export default class Render {
     place: 1,
     rotate: 1,
     switch: 1,
-    play: 1 // also in end phase
+    replay: 1
   }
-  hoveredBtn: null | "PLAY" | "HELP" | "TOUCHSCREEN" | "PLACE" | "ROTATE" | "SWITCH" = null
+  hoveredBtn: null | "REPLAY" | "HELP" | "TOUCHSCREEN" | "PLACE" | "ROTATE" | "SWITCH" = null
 
   animatedPlacingSqs: APS[] = []
   highestSnapsCount: number = 0
@@ -280,26 +280,71 @@ export default class Render {
     p5.pop()
   }
 
+  pointInRotRect(
+    mx: number,
+    my: number,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    tiltRight: boolean
+  ): boolean {
+    const dx = mx - x;
+    const dy = my - y;
+    const sin = tiltRight ? -0.5 : 0.5;
+    const cos = Math.sqrt(3) / 2;
+    return Math.abs(dx * cos - dy * sin) <= w * 0.5 && Math.abs(dx * sin + dy * cos) <= h * 0.5;
+  }
+
   renderButtons() {
+    this.hoveredBtn = null // reset
+    const { mx, my } = this.gc
     const _30deg = Math.PI / 180 * 30
-    this.p5.noStroke()
 
     // top left button
     this.renderBtn("help", 20, -35, 10, this.btnPrgs.help, 105, 55, 150, 35, -_30deg)
     // top right button
     this.renderBtn("mobile: " + (this.touchscreenOn ? "on" : "off"), 14, -62, 7, this.btnPrgs.touchscreen, 295, 55, 150, 35, _30deg)
-    // bottom left button
-    this.renderBtn("place", 18, -37, 9, this.btnPrgs.place, 105, 385, 150, 35, _30deg)
-    // bottom right button
-    this.renderBtn("rotate", 18, -48, 9, this.btnPrgs.rotate, 295, 385, 150, 35, -_30deg)
     // switch btn
     this.renderBtn("switch", 18, -46, 9, this.btnPrgs.switch, 200, 560, 150, 35, 0)
+    if (this.touchscreenOn) {
+      // bottom left button
+      this.renderBtn("place", 18, -37, 9, this.btnPrgs.place, 105, 385, 150, 35, _30deg)
+      // bottom right button
+      this.renderBtn("rotate", 18, -48, 9, this.btnPrgs.rotate, 295, 385, 150, 35, -_30deg)
+    }
 
     // update all of btnPrgs
     for (const key in this.btnPrgs) {
       if (this.btnPrgs[key] < 1) {
         this.btnPrgs[key] = Math.min(1, this.btnPrgs[key] + 0.15) // btn animation speed
       }
+    }
+
+    // restart button (both render and hover check)
+    if (this.gameplay.phase === "END") {
+      ////
+      if (false) {
+        return
+      }
+    }
+    if (this.touchscreenOn) {
+      if (this.pointInRotRect(mx, my, 105, 385, 150, 35, true)) {
+        return this.hoveredBtn = "PLACE"
+      }
+      if (this.pointInRotRect(mx, my, 295, 385, 150, 35, false)) {
+        return this.hoveredBtn = "ROTATE"
+      }
+    }
+
+    if (this.pointInRotRect(mx, my, 105, 55, 150, 35, false)) {
+      return this.hoveredBtn = "HELP"
+    }
+    if (this.pointInRotRect(mx, my, 295, 55, 150, 35, true)) {
+      return this.hoveredBtn = "TOUCHSCREEN"
+    }
+    if (mx > 125 && mx < 275 && my > 540 && my < 580) {
+      return this.hoveredBtn = "SWITCH"
     }
   }
 
@@ -401,11 +446,15 @@ export default class Render {
   draw() {
     const { p5, gameplay: gp } = this
 
-    p5.background(50);
-
+    p5.cursor(p5.ARROW)
+    p5.background(50)
+    p5.noStroke()
     this.renderButtons()
     this.renderGrid()
     this.renderExistingSquares()
+
+    // show HAND cursor if hovering on a button
+    if (this.hoveredBtn) { p5.cursor(p5.HAND) }
 
     const { currentPiece } = gp
     // holding a piece?
@@ -429,10 +478,9 @@ export default class Render {
 
       }
       else {
+        if (this.hoveredBtn === "ROTATE" || this.hoveredBtn === "PLACE") { }
         // is NOT hovering on ROTATE/PLACE button? then change to null
-        /////
-
-        currentPiece.hoveredSq = null
+        else { currentPiece.hoveredSq = null }
       }
 
       // render piece preview
@@ -484,8 +532,8 @@ export default class Render {
           p5.endShape(p5.CLOSE);
         }
 
-        // for click action
-        this.input.calculatedSqs = calculatedSqs
+        if (possiblePlacement) { p5.cursor(p5.HAND) }
+        this.input.calculatedSqs = calculatedSqs // for click action
       }
     }
 
@@ -774,47 +822,52 @@ export default class Render {
   click() {
     const gp = this.gameplay
 
-    // touchscreen mode
-    if (this.touchscreenOn) {
-
+    if (gp.phase === "END") {
+      /// check restart btn
+      return
     }
-    // desktop mode
-    else {
+
+    // mouse control?
+    if (!this.touchscreenOn) {
       // place piece if hovering on a square
-      if (this.input.hoveredSquare) { gp.placePiece() }
+      if (this.input.hoveredSquare) { return gp.placePiece() }
+    }
+
+    switch (this.hoveredBtn) {
+      case "HELP":
+        this.btnPrgs.help = 0
+        console.log("help")
+        return
+      case "TOUCHSCREEN":
+        this.btnPrgs.touchscreen = 0
+        this.touchscreenOn = !this.touchscreenOn
+        this.btnPrgs.place = 0
+        this.btnPrgs.rotate = 0
+        return
+      case "SWITCH":
+        this.btnPrgs.switch = 0
+        gp.switchType()
+        return
+      case "PLACE":
+        this.btnPrgs.place = 0
+        if (gp.currentPiece && gp.currentPiece.hoveredSq) {
+          gp.placePiece()
+        }
+        return
+      case "ROTATE":
+        this.btnPrgs.rotate = 0
+        this.gameplay.rotatePiece(true)
+        return
     }
   }
 
   keyPressed() {
-    this.btnPrgs.help = 0
     if (this.p5.keyCode === 82) {
       this.gameplay.rotatePiece(true)
     }
     if (this.p5.keyCode === 83) {
+      this.btnPrgs.switch = 0
       this.gameplay.switchType()
     }
   }
 }
-
-
-/*
-const COS_30 = Math.sqrt(3) / 2; 
-const SIN_30 = 0.5;
-function pointInRotRect(
-  mx: number,
-  my: number,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  deg: 30 | -30
-): boolean {
-  const dx = mx - x;
-  const dy = my - y;
-  const sin = deg === 30 ? -SIN_30 : SIN_30;
-  const cos = COS_30;
-  const rx = dx * cos - dy * sin;
-  const ry = dx * sin + dy * cos;
-  return Math.abs(rx) <= w * 0.5 && Math.abs(ry) <= h * 0.5;
-}
-*/
