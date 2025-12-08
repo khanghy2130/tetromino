@@ -14,6 +14,12 @@ export type APSSnap = { id: SquareID, startDeg?: number, endDeg?: number, aSqVer
 // AnimatedPlacingSquare: array of the same square with all (1-3) snaps
 export type APS = { sqData: SquareData, snaps: APSSnap[] }
 
+type Particle = {
+  pos: PositionType,
+  vel: PositionType,
+  size: number
+}
+
 type GoldenLaser = {
   targetPos: PositionType
   startPos: PositionType
@@ -59,7 +65,28 @@ export default class Render {
 
   touchscreenOn: boolean = false
 
-  endSubphase: "MESSAGE" | "DELAY" | "PRE-RATING" | "RATING" = "MESSAGE"
+  RATINGS: [number, string, number][] = [
+    // [score threshold, text, text half width]
+    [0, "", 0],
+    [60, "awesome!", 0],
+    [70, "excellent!", 0],
+    [80, "brilliant!", 0],
+    [90, "incredible!", 0],
+    [100, "legendary!!!", 0]
+  ]
+  endModal: {
+    subphase: "MESSAGE" | "DELAY" | "PRE-RATING" | "RATING",
+    score: number,
+    rating: number,
+    prg: number,
+    particles: Particle[]
+  } = {
+      subphase: "MESSAGE",
+      score: 0,
+      rating: 0,
+      prg: 1,
+      particles: []
+    }
 
   input: {
     hoveredSquare: SquareID | null
@@ -328,13 +355,7 @@ export default class Render {
       }
     }
 
-    // restart button (both render and hover check)
-    if (this.gameplay.phase === "END") {
-      if (false) {
-        ///// restart btn
-      }
-      return
-    }
+    if (this.gameplay.phase === "END") { return } // blocked on end phase
     if (this.touchscreenOn) {
       if (this.pointInRotRect(mx, my, 105, 385, 150, 35, true)) {
         return this.hoveredBtn = "PLACE"
@@ -450,40 +471,120 @@ export default class Render {
   }
 
   renderEndModal() {
-    const { p5, gameplay: gp, endSubphase: esp } = this
+    const { p5, gameplay: gp, endModal } = this
+    const sp = endModal.subphase
 
-    if (esp === "RATING") { p5.background(0) }
+    // bg & message
+    if (sp === "RATING") { p5.background(0) }
     else {
       const prg = 1 - Math.pow(1 - gp.ug, 3)
       // bg rect
       p5.noStroke()
-      p5.fill(0, 0, 0, esp === "MESSAGE" ? prg * 235 : (esp === "DELAY" ? 235 : 235 + prg * 20))
-      p5.rect(200, 300, 400, esp === "MESSAGE" ? prg * 150 : (esp === "DELAY" ? 150 : 150 + prg * 450))
+      p5.fill(0, 0, 0, sp === "MESSAGE" ? prg * 235 : (sp === "DELAY" ? 235 : 235 + prg * 20))
+      p5.rect(200, 300, 400, sp === "MESSAGE" ? prg * 150 : (sp === "DELAY" ? 150 : 150 + prg * 450))
       customFont.render(
         gp.gameOverMessage === "NO_PIECES" ? "no more pieces" : "out of space",
         (gp.gameOverMessage === "NO_PIECES" ? 415 : 435) -
-        (esp === "MESSAGE" ? prg * 390 : (esp === "DELAY" ? 390 : 390 + prg * 390)),
+        (sp === "MESSAGE" ? prg * 390 : (sp === "DELAY" ? 390 : 390 + prg * 390)),
         312, 30, p5.color(250, 100, 100), p5
       )
     }
 
     // rating
-    if (esp === "PRE-RATING" || esp === "RATING") {
-      const offX = 1 - Math.pow(1 - gp.ug, 3)
-    }
+    if (sp === "PRE-RATING" || sp === "RATING") {
+      const RATINGS = this.RATINGS
+      const offX = sp === "RATING" ? 400 : (1 - Math.pow(1 - gp.ug, 3)) * 400
+      endModal.prg = Math.min(1, endModal.prg + 0.05)
 
-    // update ug
-    if (gp.ug < 1) {
-      gp.ug = Math.min(1, gp.ug + 0.025)
-    } else { }
+      // max rating? stay at 0.5 prg
+      if (endModal.rating === RATINGS.length - 1 && endModal.prg > 0.5) { endModal.prg = 0.5 }
+      const calculatedPrg = Math.sin(Math.PI * Math.max(0, Math.min(1, endModal.prg)))
+      p5.push()
+      p5.translate(600 - offX, 300)
+      p5.scale(1 + calculatedPrg * 0.4)
+
+      // outline behind
+      const colorValue = p5.lerpColor(p5.color(200), p5.color(255, 255, 0), calculatedPrg)
+      p5.stroke(colorValue)
+      p5.noFill()
+      p5.strokeWeight(10)
+      p5.circle(0, 0, 150)
+      for (let i = 0; i < endModal.particles.length; i++) {
+        const pc = endModal.particles[i]
+        p5.strokeWeight(pc.size * 0.15)
+        p5.circle(pc.pos[0], pc.pos[1], pc.size)
+      }
+
+      // front filling
+      p5.noStroke()
+      p5.fill(0)
+      p5.circle(0, 0, 150)
+      let speed = 2 + calculatedPrg * 8
+      for (let i = endModal.particles.length - 1; i >= 0; i--) {
+        const pc = endModal.particles[i]
+        p5.circle(pc.pos[0], pc.pos[1], pc.size)
+        // update
+        pc.pos[0] += pc.vel[0] * speed
+        pc.pos[1] += pc.vel[1] * speed
+        pc.size -= 1.3 + calculatedPrg * 4.5 // shrink speed
+        if (pc.size <= 0) { endModal.particles.splice(i, 1) }
+      }
+
+      // score
+      const textWidth = customFont.render(endModal.score + "", -1000, 0, 36, p5.color(0, 0), p5)
+      customFont.render(endModal.score + "", -textWidth / 2, 20, 36, p5.color(255, 255, 0), p5)
+
+      // passively spawn circles, spawn rate scaled with score??
+      if (p5.frameCount % (2 - (endModal.prg < 1 ? 1 : 0)) === 0) {
+        const randomDeg = Math.random() * Math.PI * 2
+        endModal.particles.push({
+          pos: [0, 0],
+          vel: [Math.cos(randomDeg), Math.sin(randomDeg)],
+          size: 100
+        })
+      }
+
+      // rating text
+      if (endModal.rating > 0) {
+        p5.noStroke()
+        customFont.render(
+          RATINGS[endModal.rating][1],
+          -130, -140, 28, colorValue, p5)
+      }
+      p5.pop()
+
+      // update score
+      if (endModal.score < gp.goldPoints && p5.frameCount % 2 === 0) {
+        endModal.score++
+        // count faster if currently less than 40
+        if (endModal.score < 40) { endModal.score = Math.min(gp.goldPoints, endModal.score + 1) }
+        // rating up?
+        if (endModal.rating < RATINGS.length - 1 &&
+          endModal.score >= RATINGS[endModal.rating + 1][0]) {
+          endModal.rating++
+          endModal.prg = 0
+        }
+      }
+
+      // render replay button
+      if (endModal.score === gp.goldPoints && endModal.subphase === "RATING") {
+        this.renderBtn("play again", 18, -82, 9, this.btnPrgs.replay, 200, 540, 200, 50, 0)
+        this.btnPrgs.replay = Math.min(1, this.btnPrgs.replay + 0.14)
+        const { mx, my } = this.gc
+        this.hoveredBtn = null // reset
+        if (mx > 100 && mx < 300 && my > 515 && my < 565) {
+          this.hoveredBtn = "REPLAY"
+        }
+      }
+    }
   }
 
   draw() {
-    const { p5, gameplay: gp } = this
+    const { p5, gameplay: gp, endModal } = this
     p5.cursor(p5.ARROW)
 
     // end subphase RATING 
-    if (this.endSubphase === "RATING") {
+    if (endModal.subphase === "RATING") {
       this.renderEndModal()
       return
     }
@@ -538,8 +639,8 @@ export default class Render {
 
       }
       else {
-        if (this.hoveredBtn === "ROTATE" || this.hoveredBtn === "PLACE") { }
-        // is NOT hovering on ROTATE/PLACE button? then change to null
+        if (this.hoveredBtn === "ROTATE" || this.hoveredBtn === "PLACE" || this.hoveredBtn === "SWITCH") { }
+        // is NOT hovering on ROTATE/PLACE/SWITCH button? then change to null
         else { currentPiece.hoveredSq = null }
       }
 
@@ -894,15 +995,16 @@ export default class Render {
     // end phase (MESSAGE), wait until no more laser
     if (gp.phase === "END" && this.goldenLasers.length === 0) {
       if (gp.ug < 1) {
-        gp.ug = Math.min(1, gp.ug + 0.012)
+        gp.ug = Math.min(1, gp.ug + 0.025)
       } else {
         gp.ug = 0
-        if (this.endSubphase === "MESSAGE") {
-          this.endSubphase = "DELAY"
-        } else if (this.endSubphase === "DELAY") {
-          this.endSubphase = "PRE-RATING"
-        } else if (this.endSubphase === "PRE-RATING") {
-          this.endSubphase = "RATING"
+        if (endModal.subphase === "MESSAGE") {
+          endModal.subphase = "DELAY"
+        } else if (endModal.subphase === "DELAY") {
+          endModal.subphase = "PRE-RATING"
+        } else if (endModal.subphase === "PRE-RATING") {
+          endModal.subphase = "RATING"
+          this.btnPrgs.replay = 0
         }
       }
       this.renderEndModal()
@@ -913,7 +1015,8 @@ export default class Render {
     const gp = this.gameplay
 
     if (gp.phase === "END") {
-      /// check restart btn
+      // check restart btn
+      if (this.hoveredBtn === "REPLAY") { gp.setUpNewGame() }
       return
     }
 

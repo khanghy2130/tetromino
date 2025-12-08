@@ -71,7 +71,13 @@ export default class Gameplay {
     this.goldPoints = 0
     this.currentPiece = null
     this.gameOverMessage = null
-    this.render.endSubphase = "MESSAGE"
+    this.render.endModal = {
+      subphase: "MESSAGE",
+      score: 0,
+      rating: 0,
+      prg: 1,
+      particles: []
+    }
     this.phase = "CLEAR"
 
     // set starting nextPieces
