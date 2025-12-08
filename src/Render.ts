@@ -59,6 +59,8 @@ export default class Render {
 
   touchscreenOn: boolean = false
 
+  endSubphase: "MESSAGE" | "DELAY" | "PRE-RATING" | "RATING" = "MESSAGE"
+
   input: {
     hoveredSquare: SquareID | null
     calculatedSqs: {
@@ -328,10 +330,10 @@ export default class Render {
 
     // restart button (both render and hover check)
     if (this.gameplay.phase === "END") {
-      ////
       if (false) {
-        return
+        ///// restart btn
       }
+      return
     }
     if (this.touchscreenOn) {
       if (this.pointInRotRect(mx, my, 105, 385, 150, 35, true)) {
@@ -447,11 +449,45 @@ export default class Render {
     return this.p5.color(0, 0, 0)
   }
 
+  renderEndModal() {
+    const { p5, gameplay: gp, endSubphase: esp } = this
+
+    if (esp === "RATING") { p5.background(0) }
+    else {
+      const prg = 1 - Math.pow(1 - gp.ug, 3)
+      // bg rect
+      p5.noStroke()
+      p5.fill(0, 0, 0, esp === "MESSAGE" ? prg * 235 : (esp === "DELAY" ? 235 : 235 + prg * 20))
+      p5.rect(200, 300, 400, esp === "MESSAGE" ? prg * 150 : (esp === "DELAY" ? 150 : 150 + prg * 450))
+      customFont.render(
+        gp.gameOverMessage === "NO_PIECES" ? "no more pieces" : "out of space",
+        (gp.gameOverMessage === "NO_PIECES" ? 415 : 435) -
+        (esp === "MESSAGE" ? prg * 390 : (esp === "DELAY" ? 390 : 390 + prg * 390)),
+        312, 30, p5.color(250, 100, 100), p5
+      )
+    }
+
+    // rating
+    if (esp === "PRE-RATING" || esp === "RATING") {
+      const offX = 1 - Math.pow(1 - gp.ug, 3)
+    }
+
+    // update ug
+    if (gp.ug < 1) {
+      gp.ug = Math.min(1, gp.ug + 0.025)
+    } else { }
+  }
 
   draw() {
     const { p5, gameplay: gp } = this
-
     p5.cursor(p5.ARROW)
+
+    // end subphase RATING 
+    if (this.endSubphase === "RATING") {
+      this.renderEndModal()
+      return
+    }
+
     p5.background(30)
     p5.noStroke()
     this.renderButtons()
@@ -581,7 +617,6 @@ export default class Render {
 
     // render current piece
     if (currentPiece) {
-
       const { sqsCoors, hIndex } = this.getPieceImageData(currentPiece.op)
       const prg = 1 - this.piecesMovementPrg
       const squareSize = 30 - 12 * prg
@@ -600,6 +635,7 @@ export default class Render {
         )
       }
     }
+
 
     // render PLACE, SPREAD, CLEAR animations
     if (gp.phase !== "PLAY") {
@@ -794,10 +830,14 @@ export default class Render {
         }
       }
 
-      // done clearing? change to play phase
+      // done clearing? change to play phase (or end phase)
       if (gp.phase === "CLEAR") {
         if (animatedClearingSqs.length === 0) {
-          gp.phase = "PLAY"
+          if (gp.gameOverMessage !== null) {
+            gp.phase = "END"
+            gp.ug = 0
+          }
+          else { gp.phase = "PLAY" }
         }
       }
     }
@@ -851,7 +891,22 @@ export default class Render {
       p5.line(gl.pos1[0], gl.pos1[1], gl.pos2[0], gl.pos2[1])
     }
 
-    if (gp.gameOverMessage) console.log(gp.gameOverMessage)
+    // end phase (MESSAGE), wait until no more laser
+    if (gp.phase === "END" && this.goldenLasers.length === 0) {
+      if (gp.ug < 1) {
+        gp.ug = Math.min(1, gp.ug + 0.012)
+      } else {
+        gp.ug = 0
+        if (this.endSubphase === "MESSAGE") {
+          this.endSubphase = "DELAY"
+        } else if (this.endSubphase === "DELAY") {
+          this.endSubphase = "PRE-RATING"
+        } else if (this.endSubphase === "PRE-RATING") {
+          this.endSubphase = "RATING"
+        }
+      }
+      this.renderEndModal()
+    }
   }
 
   click() {

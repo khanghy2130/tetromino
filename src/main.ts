@@ -50,7 +50,6 @@ export default class GameClient {
 				// p5 configs
 				p5.textAlign(p5.CENTER, p5.CENTER)
 				p5.rectMode(p5.CENTER)
-				p5.imageMode(p5.CENTER)
 				p5.angleMode(p5.RADIANS)
 				p5.strokeJoin(p5.ROUND)
 				p5.frameRate(30)

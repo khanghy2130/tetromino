@@ -71,6 +71,8 @@ export default class Gameplay {
     this.goldPoints = 0
     this.currentPiece = null
     this.gameOverMessage = null
+    this.render.endSubphase = "MESSAGE"
+    this.phase = "CLEAR"
 
     // set starting nextPieces
     this.nextPieces = [this.getNewPiece(), this.getNewPiece()]
@@ -81,8 +83,22 @@ export default class Gameplay {
       Array.from({ length: 3 }, () =>
         Array.from({ length: 3 }, () => 0)
       )
-    );
+    )
 
+    // set up clearable sqs
+    const clearableSqs: Required<ClearableSquare>[] = []
+    for (let i = 0; i < 3; i++) {
+      for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 3; x++) {
+          clearableSqs.push({
+            id: [i, y, x],
+            prevState: 1,
+            prg: (x + y * 3 + i * 9) * -0.15
+          })
+        }
+      }
+    }
+    this.render.animatedClearingSqs = clearableSqs
   }
 
 
