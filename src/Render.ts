@@ -205,7 +205,7 @@ export default class Render {
   renderGrid() {
     const { p5 } = this
     const { verts } = this.GRID_VERTICES
-    p5.stroke(100)
+    p5.stroke(50)
     p5.strokeWeight(1)
 
     for (let f = 0; f < 3; f++) {
@@ -642,7 +642,7 @@ export default class Render {
             // was golden? add golden laser
             if (acsq.prevState === 2) {
               this.goldenLasers.push({
-                targetPos: [100, 500], // gold points position
+                targetPos: [25, 475], // gold points position
                 startPos: centerPos.slice() as PositionType,
                 pos1: centerPos.slice() as PositionType,
                 pos2: centerPos.slice() as PositionType,
@@ -802,6 +802,15 @@ export default class Render {
       }
     }
 
+    // render gold points
+    p5.noStroke()
+    p5.fill(255, 255, 0)
+    p5.square(25, 475, 12)
+    customFont.render(gp.goldPoints + "", 43, 487, 26, p5.color(255, 255, 0), p5)
+
+    // render remaining num
+    customFont.render(gp.remainingPieces + " left", 20, 518, 15, p5.color(200), p5)
+
     // render golden lasers
     const LASER_SPEED = this.CONSTS.LASER_SPEED
     for (let i = this.goldenLasers.length - 1; i >= 0; i--) {
@@ -841,13 +850,6 @@ export default class Render {
       p5.strokeWeight(5)
       p5.line(gl.pos1[0], gl.pos1[1], gl.pos2[0], gl.pos2[1])
     }
-
-
-    //// test text
-    p5.noStroke()
-    p5.fill(250)
-    p5.textSize(24)
-    p5.text(gp.remainingPieces + "\n" + gp.goldPoints, 370, 40)
 
     if (gp.gameOverMessage) console.log(gp.gameOverMessage)
   }
