@@ -32,6 +32,7 @@ export default class Gameplay {
     [["U"], ["L"], ["L", "D"]], // Z
     [["U"], ["R"], ["D"]], // T
     [["D"], ["U"], ["U", "U"]], // I
+    [["D"], ["R"], ["R", "D"]], // O
   ]
 
   boardData: SquareData[][][] = [] // face > row > square
@@ -258,11 +259,24 @@ export default class Gameplay {
           // for each of 4 rotations
           loop1: for (let r = 0; r < 4; r++) {
             sqList = this.rotateSqList(sqList, true)
-            for (let sli = 0; sli < sqList.length; sli++) {
+            const oPieceCheckSids: (SquareID | null)[] = []
+            for (let sli = 0; sli < 3; sli++) {
               const id = getSteppedSqID(sqList[sli], [i, y, x])
+              oPieceCheckSids.push(id)
               // out of bound || this pos is occupied? 
               if (id === null || this.boardData[id[0]][id[1]][id[2]] !== 0) { continue loop1 }
             }
+
+            // special check for O-piece
+            if (this.currentPiece.op.sqList === this.RAW_PIECES[6]) {
+              const facesList: number[] = [i] // including unlisted square face (center)
+              for (let si = 0; si < oPieceCheckSids.length; si++) {
+                const sid = oPieceCheckSids[si]
+                if (sid && !facesList.includes(sid[0])) { facesList.push(sid[0]) }
+              }
+              if (facesList.length === 3) { continue loop1 } // overlap self
+            }
+
             return true // if reach here then is placeable
           }
         }
@@ -278,11 +292,11 @@ export default class Gameplay {
     if (this.currentPiece === null || this.currentPiece.hoveredSq === null) return
     const { calculatedSqs } = render.input
     // exit if not possible
-    if (calculatedSqs.some(sq => sq.isOverlapped || sq.isOutOfBound)) { return }
+    if (calculatedSqs.some(sq => sq.isOverlapped || sq.isOutOfBound || sq.overlapSelf)) { return }
 
     const bd = this.boardData
-
     // reset
+    render.hintAtHelp = false
     render.input.hoveredSquare = null
     this.remainingPieces--
 
@@ -339,7 +353,7 @@ export default class Gameplay {
     }
 
     render.animatedSpreadingSqs = newGoldenSqs.map((sid, i) => ({
-      id: sid, prg: -0.1 - i * 0.3 // delay between spreading squares
+      id: sid, prg: -0.1 - i * 0.35 // delay between spreading squares
     }))
     render.animatedClearingSqs = clearedSqs
 

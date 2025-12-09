@@ -53,6 +53,7 @@ export default class Render {
     replay: 1
   }
   hoveredBtn: null | "REPLAY" | "HELP" | "TOUCHSCREEN" | "PLACE" | "ROTATE" | "SWITCH" = null
+  hintAtHelp: boolean = true
 
   animatedPlacingSqs: APS[] = []
   highestSnapsCount: number = 0
@@ -65,14 +66,14 @@ export default class Render {
 
   touchscreenOn: boolean = false
 
-  RATINGS: [number, string, number][] = [
-    // [score threshold, text, text half width]
-    [0, "", 0],
-    [60, "awesome!", 0],
-    [70, "excellent!", 0],
-    [80, "brilliant!", 0],
-    [90, "incredible!", 0],
-    [100, "legendary!!!", 0]
+  RATINGS: [number, string][] = [
+    // [score threshold, text]
+    [0, ""],
+    [60, "awesome!"],
+    [70, "excellent!"],
+    [80, "brilliant!"],
+    [90, "incredible!"],
+    [100, "legendary!!!"]
   ]
   endModal: {
     subphase: "MESSAGE" | "DELAY" | "PRE-RATING" | "RATING",
@@ -92,7 +93,8 @@ export default class Render {
     hoveredSquare: SquareID | null
     calculatedSqs: {
       id: SquareID, isGolden: boolean,
-      isOutOfBound?: boolean, isOverlapped?: boolean
+      isOutOfBound?: boolean, isOverlapped?: boolean,
+      overlapSelf?: boolean
     }[]
   } = { hoveredSquare: null, calculatedSqs: [] }
 
@@ -444,6 +446,11 @@ export default class Render {
 
     // fix some pieces
     const RP = this.gameplay.RAW_PIECES
+    if (sqList === RP[6]) {
+      for (let c = 0; c < sqsCoors.length; c++) {
+        sqsCoors[c][1] += 0.5
+      }
+    }
     if (sqList === RP[1] || sqList === RP[3]) {
       for (let c = 0; c < sqsCoors.length; c++) {
         sqsCoors[c][0]++
@@ -665,9 +672,23 @@ export default class Render {
         // check if overlapped (also set possible)
         let possiblePlacement = true
         for (let i = 0; i < calculatedSqs.length; i++) {
-          const sq = calculatedSqs[i];
+          const sq = calculatedSqs[i]
           sq.isOverlapped = gp.boardData[sq.id[0]][sq.id[1]][sq.id[2]] !== 0
           if (sq.isOverlapped || sq.isOutOfBound) { possiblePlacement = false }
+        }
+
+        // special case for O-piece, not possible if being on all 3 faces
+        if (currentPiece.op.sqList === gp.RAW_PIECES[6]) {
+          const facesList: number[] = []
+          for (let i = 0; i < calculatedSqs.length; i++) {
+            const sq = calculatedSqs[i]
+            if (!facesList.includes(sq.id[0])) { facesList.push(sq.id[0]) }
+          }
+          // set overlapSelf to FIRST sqs
+          if (facesList.length === 3) {
+            calculatedSqs[0].overlapSelf = true
+            possiblePlacement = false
+          }
         }
 
         // rendering
@@ -946,7 +967,7 @@ export default class Render {
     // render gold points
     p5.noStroke()
     p5.fill(255, 255, 0)
-    p5.square(25, 475, 12)
+    p5.square(25, 475, 16, 5)
     customFont.render(gp.goldPoints + "", 43, 487, 26, p5.color(255, 255, 0), p5)
 
     // render remaining num
@@ -990,6 +1011,20 @@ export default class Render {
       p5.stroke(247, 255, 23)
       p5.strokeWeight(5)
       p5.line(gl.pos1[0], gl.pos1[1], gl.pos2[0], gl.pos2[1])
+    }
+
+    // render hint at help
+    if (this.hintAtHelp) {
+      p5.stroke(255)
+      p5.strokeWeight(6)
+      p5.push()
+      p5.translate(50, 30)
+      p5.rotate(-1.2)
+      const yOff = Math.cos(p5.frameCount * 0.3) * 7
+      p5.line(0, 20 + yOff, 0, -20 + yOff)
+      p5.line(0, 20 + yOff, 10, 5 + yOff)
+      p5.line(0, 20 + yOff, -10, 5 + yOff)
+      p5.pop()
     }
 
     // end phase (MESSAGE), wait until no more laser
@@ -1061,6 +1096,9 @@ export default class Render {
     if (this.p5.keyCode === 83) {
       this.btnPrgs.switch = 0
       this.gameplay.switchType()
+    }
+    if (this.p5.keyCode === 32) {
+      this.gameplay.shiftPiecesInventory()////////
     }
   }
 }
