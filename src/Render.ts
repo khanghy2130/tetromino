@@ -641,7 +641,7 @@ export default class Render {
         for (let s = 0; s < sids.length; s++) {
           const sid = sids[s]
           const sqVerts: PositionType[] = faces[sid[0]][sid[1]][sid[2]]
-          p5.fill(230)
+          p5.fill(200)
           p5.beginShape()
           for (let sv = 0; sv < sqVerts.length; sv++) {
             p5.vertex(sqVerts[sv][0], sqVerts[sv][1])
