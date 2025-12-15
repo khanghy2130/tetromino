@@ -513,7 +513,7 @@ export default class Render {
     if (sp === "PRE-RATING" || sp === "RATING") {
       const RATINGS = this.RATINGS
       const offX = sp === "RATING" ? 400 : (1 - Math.pow(1 - gp.ug, 3)) * 400
-      endModal.prg = Math.min(1, endModal.prg + 0.1)
+      endModal.prg = Math.min(1, endModal.prg + 0.07)
 
       // max rating? stay at 0.5 prg
       if (endModal.rating === RATINGS.length - 1 && endModal.prg > 0.5) { endModal.prg = 0.5 }
